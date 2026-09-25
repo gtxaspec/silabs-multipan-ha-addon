@@ -1,0 +1,100 @@
+--- a/app/bluetooth/example_host/bt_host_cpc_hci_bridge/main.c
++++ b/app/bluetooth/example_host/bt_host_cpc_hci_bridge/main.c
+@@ -78,6 +78,7 @@
+ static int transfer_data_from_pty_to_cpc(void);
+ static int transfer_data_from_cpc_to_pty(void);
+ static int parse_hci_packet(const uint8_t *hci_buffer, const ssize_t hci_buffer_len);
++static void clamp_le_scan_duty(uint8_t *pkt, ssize_t len);
+ static void debug_log_buffer(const char *name, const uint8_t *buf, const ssize_t size);
+ 
+ /**************************************************************************//**
+@@ -334,6 +335,7 @@
+       hci_packet_len = parse_hci_packet(hci_packet_buf, size);
+       app_log_debug("cpc_write - ");
+       debug_log_buffer("cpc_tx_buffer", cpc_tx_buffer, hci_packet_len);
++      clamp_le_scan_duty(hci_packet_buf, hci_packet_len);
+       // Write data to CPC
+       cpc_write_result = cpc_write_endpoint(cpc_endpoint, hci_packet_buf, hci_packet_len, 0);
+       if (cpc_write_result < 0) {
+@@ -455,3 +457,81 @@
+   app_log_hexdump_debug(buf, size);
+   app_log_append_debug(" ]" APP_LOG_NL);
+ }
++
++/**************************************************************************//**
++ * Caps the LE scan window of scan parameter commands at a percentage of the
++ * scan interval (CPC_HCI_BRIDGE_MAX_SCAN_DUTY, 1..99; unset = no change), and
++ * raises short intervals to CPC_HCI_BRIDGE_MIN_SCAN_INTERVAL (0.625 ms units,
++ * default 0x0060 = 60 ms) so the radio is not switched every few milliseconds.
++ *
++ * The multiprotocol RCP shares one radio between BLE and 802.15.4: a host
++ * scanning with window == interval (BlueZ discovery defaults) leaves Zigbee
++ * and Thread almost no receive time.
++ *
++ * @param[in,out] pkt H4 packet (type byte first), modified in place
++ * @param[in] len length of the packet
++ *****************************************************************************/
++static void clamp_le_scan_duty(uint8_t *pkt, ssize_t len)
++{
++  static int max_duty = -1;
++  static uint32_t min_interval = 0x0060u;
++  if (max_duty < 0) {
++    const char *env = getenv("CPC_HCI_BRIDGE_MAX_SCAN_DUTY");
++    max_duty = env ? atoi(env) : 0;
++    env = getenv("CPC_HCI_BRIDGE_MIN_SCAN_INTERVAL");
++    if (env) {
++      min_interval = (uint32_t)strtoul(env, NULL, 0);
++    }
++    if (min_interval < 0x0004u || min_interval > 0x4000u) {
++      min_interval = 0x0060u;
++    }
++    if (max_duty < 1 || max_duty > 99) {
++      max_duty = 0;
++    } else {
++      app_log_info("Capping LE scan duty cycle at %d%%, minimum interval 0x%04x" APP_LOG_NL,
++                   max_duty, (unsigned)min_interval);
++    }
++  }
++  if (max_duty == 0 || len < 4 || pkt[0] != hci_packet_type_command) {
++    return;
++  }
++  uint16_t opcode = (uint16_t)(pkt[1] | (pkt[2] << 8));
++  uint8_t param_len = pkt[3];
++  uint8_t *p = &pkt[4];
++  if (len < 4 + param_len) {
++    return;
++  }
++  int blocks = 0;
++  if (opcode == 0x200B && param_len >= 7) {          // LE Set Scan Parameters
++    p += 1;                                          // interval at +1, window at +3
++    blocks = 1;
++  } else if (opcode == 0x2041 && param_len >= 3) {   // LE Set Extended Scan Parameters
++    uint8_t phys = p[2];
++    p += 3;                                          // per-PHY blocks: type, interval, window
++    blocks = __builtin_popcount(phys & 0x05);
++    if (param_len < 3 + 5 * blocks) {
++      return;
++    }
++    p += 1;
++  } else {
++    return;
++  }
++  for (int i = 0; i < blocks; i++, p += 5) {
++    uint32_t interval = (uint32_t)(p[0] | (p[1] << 8));
++    uint32_t window = (uint32_t)(p[2] | (p[3] << 8));
++    uint32_t new_interval = interval < min_interval ? min_interval : interval;
++    uint32_t cap = new_interval * (uint32_t)max_duty / 100u;
++    if (cap < 4u) {
++      cap = 4u;                                      // 2.5 ms, the smallest legal window
++    }
++    uint32_t new_window = window > cap ? cap : window;
++    if (new_interval != interval || new_window != window) {
++      app_log_info("LE scan interval/window 0x%04x/0x%04x -> 0x%04x/0x%04x" APP_LOG_NL,
++                   (unsigned)interval, (unsigned)window, (unsigned)new_interval, (unsigned)new_window);
++      p[0] = (uint8_t)(new_interval & 0xff);
++      p[1] = (uint8_t)(new_interval >> 8);
++      p[2] = (uint8_t)(new_window & 0xff);
++      p[3] = (uint8_t)(new_window >> 8);
++    }
++  }
++}
