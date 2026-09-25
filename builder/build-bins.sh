@@ -28,8 +28,7 @@ if [[ $step == all || $step == zigbeed ]]; then
 fi
 
 if [[ $step == all || $step == hci ]]; then
-  cd /src/sdk-hci/app/bluetooth/example_host/bt_host_cpc_hci_bridge
-  make clean >/dev/null 2>&1 || true
+  rm -rf $B/sdk-hci; cp -r /src/sdk-hci $B/sdk-hci; cd $B/sdk-hci/app/bluetooth/example_host/bt_host_cpc_hci_bridge
   PKG_CONFIG_PATH=$O/lib/pkgconfig PKG_CONFIG_SYSROOT_DIR=/out make >/build/hci-make.log 2>&1 || { grep -E "error" /build/hci-make.log | head; exit 1; }
   install -m 755 exe/bt_host_cpc_hci_bridge $O/bin/cpc-hci-bridge
   patchelf --set-rpath $P/lib $O/bin/cpc-hci-bridge
