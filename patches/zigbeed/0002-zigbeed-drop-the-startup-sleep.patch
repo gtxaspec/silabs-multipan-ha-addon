@@ -1,0 +1,11 @@
+--- a/app.c	2026-09-25 05:32:43.265851827 -0700
++++ b/app.c	2026-09-25 05:32:43.288980792 -0700
+@@ -349,8 +349,6 @@
+ 
+   openlog("zigbeed", LOG_PID | (config.mIsVerbose ? LOG_PERROR : 0), LOG_DAEMON);
+   setlogmask(setlogmask(0) & LOG_UPTO(LOG_DEBUG));
+-  // Sleep added for successful restart of zigbeed when Host application resets
+-  sleep(1);
+   otInstance *instance = otSysInit(&config.mPlatformConfig);
+   IgnoreError(otLoggingSetLevel(config.mLogLevel));
+   syslog(LOG_INFO, "Zigbeed started");

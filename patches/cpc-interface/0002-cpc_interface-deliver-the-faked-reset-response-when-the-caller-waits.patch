@@ -1,0 +1,73 @@
+--- a/cpc_interface.cpp	2026-09-25 05:32:21.886548451 -0700
++++ b/cpc_interface.cpp	2026-09-25 05:32:43.256856566 -0700
+@@ -240,11 +240,12 @@
+ {
+     otError error = OT_ERROR_NONE;
+ 
+-    // We are catching the SPINEL reset command and returning
+-    // a SPINEL reset response immediately
++    // We are catching the SPINEL reset command and faking the SPINEL reset response. The next
++    // WaitForFrame()/Process() delivers it: the caller only starts waiting after this returns, so
++    // answering here would cost it a full kMaxWaitTime timeout.
+     if (IsSpinelResetCommand(aFrame, aLength))
+     {
+-        SendResetResponse();
++        mResetResponsePending = true;
+         return error;
+     }
+ 
+@@ -278,8 +279,17 @@
+     otError error = OT_ERROR_NONE;
+ 
+     CheckAndReInitCpc();
++
++    if (mResetResponsePending)
++    {
++        mResetResponsePending = false;
++        SendResetResponse();
++        ExitNow();
++    }
++
+     Read(aTimeoutUs);
+ 
++exit:
+     return error;
+ }
+ 
+@@ -294,12 +304,26 @@
+     {
+         context->mMaxFd = mSockFd;
+     }
++
++    if (mResetResponsePending)
++    {
++        context->mTimeout.tv_sec  = 0;
++        context->mTimeout.tv_usec = 0;
++    }
+ }
+ 
+ void CpcInterfaceImpl::Process(const void *aMainloopContext)
+ {
+     OT_UNUSED_VARIABLE(aMainloopContext);
+     CheckAndReInitCpc();
++
++    if (mResetResponsePending)
++    {
++        mResetResponsePending = false;
++        SendResetResponse();
++        return;
++    }
++
+     Read(0);
+ }
+ 
+--- a/cpc_interface.hpp	2026-09-25 05:32:21.886586234 -0700
++++ b/cpc_interface.hpp	2026-09-25 05:32:21.887670922 -0700
+@@ -245,6 +245,7 @@
+     const Url::Url      &mRadioUrl;
+ 
+     int            mSockFd;
++    bool           mResetResponsePending = false;
+     cpc_handle_t   mHandle;
+     cpc_endpoint_t mEndpoint;
+     uint32_t       mCpcBusSpeed;

@@ -1,0 +1,18 @@
+--- a/cpc_interface.cpp	2026-09-25 05:32:21.833200350 -0700
++++ b/cpc_interface.cpp	2026-09-25 05:32:21.854804567 -0700
+@@ -99,7 +99,14 @@
+             DieNow(OT_EXIT_FAILURE);
+         }
+ 
+-        mSockFd = cpc_open_endpoint(mHandle, &mEndpoint, mId, 1);
++        // -EAGAIN while the RCP is still reopening an endpoint whose last client just left, e.g.
++        // right after zigbeed re-execs itself on an EZSP reset.
++        for (int attempts = 0; (mSockFd = cpc_open_endpoint(mHandle, &mEndpoint, mId, 1)) == -EAGAIN &&
++                               attempts < kMaxRestartAttempts;
++             attempts++)
++        {
++            usleep(kMaxSleepDuration);
++        }
+ 
+         if (mSockFd < 0)
+         {
