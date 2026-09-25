@@ -1,0 +1,2 @@
+#!/bin/sh
+test -S /dev/shm/cpcd/cpcd_0/ctrl.cpcd.sock

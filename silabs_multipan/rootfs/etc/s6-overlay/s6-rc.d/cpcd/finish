@@ -1,0 +1,3 @@
+#!/bin/sh
+rm -rf /dev/shm/cpcd
+exec /etc/s6-overlay/scripts/halt-on-failure cpcd "$1" "$2"

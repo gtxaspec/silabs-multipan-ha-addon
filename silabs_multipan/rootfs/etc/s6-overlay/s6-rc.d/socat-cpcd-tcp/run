@@ -1,0 +1,10 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Connect a pty for cpcd to the radio's TCP serial bridge (e.g. ser2net)
+# ==============================================================================
+bashio::log.info "Starting socat TCP client for CPC daemon..."
+exec s6-notifyoncheck -d -s 300 -w 300 \
+    /usr/bin/socat -d pty,raw,echo=0,link=/tmp/ttyCPC,ignoreeof \
+    "tcp:$(bashio::config 'network_device')"

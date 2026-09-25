@@ -1,0 +1,21 @@
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# halt-on-failure NAME EXIT_CODE SIGNAL (a finish script's $1 $2)
+# A failed radio service takes the whole add-on down: the RCP only recovers
+# cleanly when cpcd restarts it and every client reopens its endpoint (the
+# Bluetooth endpoint never reopens without that reset).
+# ==============================================================================
+readonly name="$1"
+declare code="$2"
+readonly signal="$3"
+
+bashio::log.info "${name} ended with exit code ${code} (signal ${signal})."
+if [ "${code}" -eq 0 ] || { [ "${code}" -eq 256 ] && [ "${signal}" -eq 15 ]; }; then
+    exit 0
+fi
+
+[ "${code}" -eq 256 ] && code=$((128 + signal))
+bashio::log.error "${name} failed, stopping the add-on."
+echo "${code}" > /run/s6-linux-init-container-results/exitcode
+exec /run/s6/basedir/bin/halt

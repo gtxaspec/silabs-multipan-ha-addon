@@ -1,0 +1,31 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Generate the cpcd configuration
+# ==============================================================================
+declare device
+declare trace_level="info"
+
+if bashio::config.has_value 'network_device'; then
+    device="/tmp/ttyCPC"
+elif bashio::config.has_value 'device'; then
+    device=$(bashio::config 'device')
+else
+    bashio::log.fatal "Set either device or network_device!"
+    bashio::exit.nok
+fi
+
+if bashio::config.true 'cpcd_trace'; then
+    trace_level="debug"
+fi
+
+bashio::log.info "Generating cpcd configuration."
+bashio::var.json \
+    device "${device}" \
+    baudrate "$(bashio::config 'baudrate')" \
+    flow_control "$(bashio::config 'flow_control')" \
+    trace_level "${trace_level}" \
+    | tempio \
+        -template /usr/local/share/cpcd.conf \
+        -out /etc/cpcd.conf

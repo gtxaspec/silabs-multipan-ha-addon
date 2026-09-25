@@ -1,0 +1,8 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Attach the bridge's pty as a host HCI device (loads hci_uart on demand)
+# ==============================================================================
+bashio::log.info "Attaching the Bluetooth controller..."
+exec /usr/bin/btattach -B /run/cpc-hci/pts_hci -P h4

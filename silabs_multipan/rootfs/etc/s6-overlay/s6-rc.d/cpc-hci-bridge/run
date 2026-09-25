@@ -1,0 +1,21 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Start the CPC <-> HCI bridge (a pty speaking H4, attached by btattach)
+# ==============================================================================
+declare duty
+
+duty=$(bashio::config 'bluetooth_max_scan_duty')
+if [ "${duty}" -lt 100 ]; then
+    # BlueZ scans at 100 % duty, which starves 802.15.4 on the shared radio
+    export CPC_HCI_BRIDGE_MAX_SCAN_DUTY="${duty}"
+    bashio::log.info "Capping the Bluetooth LE scan duty cycle at ${duty} %."
+fi
+
+# shellcheck disable=SC2015
+mkdir -p /run/cpc-hci && cd /run/cpc-hci || bashio::exit.nok "Could not create /run/cpc-hci"
+rm -f pts_hci
+
+bashio::log.info "Starting cpc-hci-bridge..."
+exec s6-notifyoncheck -d -s 300 -w 300 -n 0 /opt/multipan/bin/cpc-hci-bridge cpcd_0

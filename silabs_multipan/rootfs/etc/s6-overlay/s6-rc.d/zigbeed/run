@@ -1,0 +1,22 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Start the EmberZNet Zigbee daemon (EZSP over TCP)
+# ==============================================================================
+declare ezsp_listen="::"
+declare ezsp_listen_port
+
+# shellcheck disable=SC2015
+mkdir -p /data/zigbeed && cd /data/zigbeed || bashio::exit.nok "Could not change to zigbeed working directory"
+
+# Without a mapped port, listen on the Supervisor network only
+ezsp_listen_port="$(bashio::addon.port 9999)"
+if ! bashio::var.has_value "${ezsp_listen_port}"; then
+    ezsp_listen="$(bashio::addon.ip_address)"
+    ezsp_listen_port="9999"
+fi
+
+bashio::log.info "Starting zigbeed on ${ezsp_listen} port ${ezsp_listen_port}..."
+exec /opt/multipan/bin/zigbeed --radio-url "spinel+cpc://cpcd_0?iid=1&iid-list=0" \
+    --ezsp-listen "${ezsp_listen}" --ezsp-listen-port "${ezsp_listen_port}"

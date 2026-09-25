@@ -1,0 +1,2 @@
+#!/bin/sh
+exec /etc/s6-overlay/scripts/halt-on-failure cpc-hci-bridge "$1" "$2"
