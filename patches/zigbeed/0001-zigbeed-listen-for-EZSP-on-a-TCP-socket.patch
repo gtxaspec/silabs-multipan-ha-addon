@@ -1,0 +1,407 @@
+diff -ruN '--exclude=build' a/app.c b/app.c
+--- a/app.c	2026-09-25 04:59:19.226232752 -0700
++++ b/app.c	2026-09-25 05:03:23.439089000 -0700
+@@ -27,6 +27,7 @@
+  */
+ 
+ #define _GNU_SOURCE
++#include <arpa/inet.h>
+ #include <stdint.h>
+ #include <stdbool.h>
+ 
+@@ -87,6 +88,9 @@
+ #define DEFAULT_CONF_PATH "/usr/local/etc/zigbeed.conf"
+ char confFilePath[PATH_MAX] = DEFAULT_CONF_PATH;
+ 
++extern struct in6_addr ezspListenAddress;
++extern uint16_t ezspPort;
++
+ /**
+  * This enumeration defines the argument return values.
+  *
+@@ -94,17 +98,19 @@
+ enum {
+   OT_POSIX_OPT_RADIO_URL      = 'r',
+   OT_POSIX_OPT_DEBUG_LEVEL    = 'd',
+-  OT_POSIX_OPT_EZSP_INTERFACE = 'p',
++  OT_POSIX_OPT_EZSP_LISTEN    = 'l',
++  OT_POSIX_OPT_EZSP_LISTEN_PORT = 'p',
+   OT_POSIX_OPT_HELP           = 'h',
+   OT_POSIX_OPT_VERBOSE        = 'v',
+   OT_POSIX_OPT_CONF           = 'c',
+ };
+ 
+-#define GETOPT_OPTION_STRING "r:d:p:hv:c:"
++#define GETOPT_OPTION_STRING "r:d:l:p:hv:c:"
+ static const struct option kOptions[] = {
+   { "radio-url", required_argument, NULL, OT_POSIX_OPT_RADIO_URL },
+   { "debug-level", required_argument, NULL, OT_POSIX_OPT_DEBUG_LEVEL },
+-  { "ezsp-interface", required_argument, NULL, OT_POSIX_OPT_EZSP_INTERFACE },
++  { "ezsp-listen", required_argument, NULL, OT_POSIX_OPT_EZSP_LISTEN },
++  { "ezsp-listen-port", required_argument, NULL, OT_POSIX_OPT_EZSP_LISTEN_PORT },
+   { "help", no_argument, NULL, OT_POSIX_OPT_HELP },
+   { "verbose", required_argument, NULL, OT_POSIX_OPT_VERBOSE },
+   { "conf", required_argument, NULL, OT_POSIX_OPT_CONF },
+@@ -119,7 +125,8 @@
+           "Options:\n"
+           "    -r  --radio-url <RadioURL>    URL to the radio device. Must include iid=n with n=1,2, or 3.\n"
+           "    -d  --debug-level <level>     Debug level for Spinel syslog logging.\n"
+-          "    -p  --ezsp-interface <name>   EZSP interface name.\n"
++          "    -l  --ezsp-listen <address>   Address to listen on (EZSP protocol).\n"
++          "    -p  --ezsp-listen-port <port> Port to listen on (EZSP protocol).\n"
+           "    -h  --help                    Display this usage information.\n"
+           "    -v  --verbose <value>         Also log Spinel to stderr, value: 1=enable; 0=disable.\n"
+           "    -c  --conf <path>             Path to the configuration file.\n",
+@@ -172,7 +179,6 @@
+   ssize_t argCount = 0;
+   FILE *fp = fopen(confFilePath, "r");
+   if (fp == NULL) {
+-    fprintf(stderr, "Cannot open file %s\n", confFilePath);
+     return 0; // no config file
+   }
+ 
+@@ -218,6 +224,39 @@
+   return argCount;
+ }
+ 
++static bool parseListenPort(const char *arg)
++{
++  unsigned long port = strtoul(optarg, NULL, 10);
++  if (!port || port > UINT16_MAX) {
++    return false;
++  }
++  ezspPort = (uint16_t)port;
++  return true;
++}
++
++static bool parseListenAddress(const char *arg)
++{
++  char *tmp;
++  const char ipv4_prefix[] = "::FFFF:";
++  const int ipv4_prefix_len = sizeof(ipv4_prefix) - 1;
++  const int arg_len = strlen(arg);
++
++  if (inet_pton(AF_INET6, arg, &ezspListenAddress) == 1) {
++    return true;
++  }
++
++  tmp = malloc(arg_len + ipv4_prefix_len + 1);
++  strcpy(tmp, ipv4_prefix);
++  strncpy(tmp + ipv4_prefix_len, arg, arg_len + 1);
++  if (inet_pton(AF_INET6, tmp, &ezspListenAddress) == 1) {
++    free(tmp);
++    return true;
++  }
++  free(tmp);
++
++  return false;
++}
++
+ static void ParseArg(int aArgCount, char *aArgVector[], PosixConfig *aConfig)
+ {
+   optind = 1;
+@@ -239,13 +278,18 @@
+       case OT_POSIX_OPT_HELP:
+         PrintUsage(aArgVector[0], stdout, OT_EXIT_SUCCESS);
+         break;
+-      case OT_POSIX_OPT_EZSP_INTERFACE:
+-        if (strlen(optarg) > SERIAL_PORT_NAME_MAX_LEN) {
+-          fprintf(stderr, "Error: ezsp-interface name too long\n");
++      case OT_POSIX_OPT_EZSP_LISTEN:
++	if (!parseListenAddress(optarg)) {
++          fprintf(stderr, "Error: could not parse ezsp-listen address\n");
+           exit(OT_EXIT_INVALID_ARGUMENTS);
+         }
+-        strcpy(serialPort, optarg);
+         break;
++      case OT_POSIX_OPT_EZSP_LISTEN_PORT:
++        if (!parseListenPort(optarg)) {
++          fprintf(stderr, "Error: could not parse ezsp-listen port\n");
++          exit(OT_EXIT_INVALID_ARGUMENTS);
++	}
++	break;
+       case OT_POSIX_OPT_RADIO_URL:
+         if (strlen(optarg) > RADIO_URL_MAX_LEN) {
+           fprintf(stderr, "Error: Radio URL too long\n");
+diff -ruN '--exclude=build' a/main.c b/main.c
+--- a/main.c	2026-09-25 04:59:19.226219155 -0700
++++ b/main.c	2026-09-25 05:02:38.138006366 -0700
+@@ -63,6 +63,8 @@
+ // From platform/base/phy/simulation/security.h:
+ extern uint8_t simulatorEncryptionType;
+ 
++extern void serialShutdown(void);
++
+ void app_init(void)
+ {
+ #if defined(SL_ZIGBEE_TEST) || defined(ZIGBEE_STACK_ON_HOST)
+@@ -102,6 +104,7 @@
+   app_process_args(argc, argv);
+ 
+   if (setjmp(gResetJump)) {
++    serialShutdown();
+     fprintf(stderr, "Restarting\n");
+     execvp(argv[0], argv);
+   }
+diff -ruN '--exclude=build' a/simplicity_sdk_2025.6.1/protocol/zigbee/app/projects/zigbeed/serial_adapter.c b/simplicity_sdk_2025.6.1/protocol/zigbee/app/projects/zigbeed/serial_adapter.c
+--- a/simplicity_sdk_2025.6.1/protocol/zigbee/app/projects/zigbeed/serial_adapter.c	2026-09-25 04:59:19.226075385 -0700
++++ b/simplicity_sdk_2025.6.1/protocol/zigbee/app/projects/zigbeed/serial_adapter.c	2026-09-25 05:10:17.445348355 -0700
+@@ -17,13 +17,18 @@
+  *
+  ******************************************************************************/
+ 
+-#include <stdint.h>
+-#include <stdbool.h>
++#define _GNU_SOURCE  // setenv/unsetenv under -std=c18
++
+ #include <errno.h>
+ #include <fcntl.h>
++#include <netinet/in.h>
++#include <stdint.h>
++#include <stdbool.h>
+ #include <stdio.h>
++#include <stdlib.h>
+ #include <string.h>
+-#include <termios.h>
++#include <sys/socket.h>
++#include <netinet/tcp.h>
+ #include <unistd.h>
+ 
+ #include "sl_zigbee_types.h"
+@@ -37,19 +42,17 @@
+ #define MAX_OUT_BLOCK_LEN     512   // maximum bytes to output at one time
+ #define MAX_IN_BLOCK_LEN      512   // maximum bytes to input at one time
+ 
+-#define DEFAULT_SERIAL_PORT "/tmp/ttyZigbeed"
+ #define DEFAULT_OUT_BLOCK_LEN 1
+ #define DEFAULT_IN_BLOCK_LEN 256
+ 
+-char serialPort[SERIAL_PORT_NAME_MAX_LEN] = DEFAULT_SERIAL_PORT;
+ 
+-#ifdef ZIGBEE_PRO_COMPLIANCE_ON_HOST
+-#include "sl_cli_threaded_host.h"
+-extern bool sli_cli_is_input_handled(void);
+-extern int sli_cli_get_pipe_read_fd(void);
+-#endif // ZIGBEE_PRO_COMPLIANCE_ON_HOST
++struct in6_addr ezspListenAddress = IN6ADDR_ANY_INIT;
++uint16_t ezspPort = 9999;
++
++extern jmp_buf gResetJump;
++
++static int socketFd = NULL_FILE_DESCRIPTOR;
+ 
+-static int serialFd = NULL_FILE_DESCRIPTOR;   // file descriptor for serial port
+ static uint8_t outBuffer[MAX_OUT_BLOCK_LEN];  // array to buffer output
+ static uint8_t *outBufRd;                     // outBuffer read pointer
+ static uint8_t *outBufWr;                     // outBuffer write pointer
+@@ -59,13 +62,59 @@
+ static uint8_t *inBufWr;                      // inBuffer write pointer
+ static uint16_t inBlockLen;                   // bytes to read ahead
+ 
+-static void serialClose(void)
++static sl_status_t initSocket(void)
+ {
+-  if (serialFd != NULL_FILE_DESCRIPTOR) {
+-    tcflush(serialFd, TCIOFLUSH);
+-    close(serialFd);
+-    serialFd = NULL_FILE_DESCRIPTOR;
++  struct sockaddr_in6 address;
++  int addrlen = sizeof(address);
++  int opt = 1;
++  static int serverFd = -1;
++
++  if ((serverFd = socket(AF_INET6, SOCK_STREAM, 0)) < 0) {
++    fprintf(stderr, "Failed to create server socket: %s\r\n", strerror(errno));
++    return SL_STATUS_FAIL;
++  }
++
++  // Forcefully attaching socket to the port 8080
++  if (setsockopt(serverFd, SOL_SOCKET,
++                 SO_REUSEADDR, &opt,
++                 sizeof(opt))) {
++    fprintf(stderr, "Failed to set server socket options: %s\r\n", strerror(errno));
++    return SL_STATUS_FAIL;
++  }
++
++  address.sin6_family = AF_INET6;
++  address.sin6_addr = ezspListenAddress;
++  address.sin6_port = htons(ezspPort);
++
++  if (bind(serverFd, (struct sockaddr*)&address, sizeof(address)) < 0) {
++    fprintf(stderr, "Failed to bind server socket to port %d: %s\r\n", ezspPort, strerror(errno));
++    return SL_STATUS_FAIL;
++  }
++
++  fprintf(stderr, "Listening on port %d for connection...\r\n", ezspPort);
++  if (listen(serverFd, 3) < 0) {
++    fprintf(stderr, "Failed to listen on server socket: %s\r\n", strerror(errno));
++    return SL_STATUS_FAIL;
++  }
++
++  fprintf(stderr, "Accepting connection.\r\n");
++  if ((socketFd = accept(serverFd, (struct sockaddr*)&address, (socklen_t*)&addrlen)) < 0) {
++    fprintf(stderr, "Failed to accept on server socket: %s\r\n", strerror(errno));
++    return SL_STATUS_FAIL;
+   }
++  fprintf(stderr, "Accepted connection %d.\r\n", socketFd);
++
++  close(serverFd);
++
++  fcntl(socketFd, F_SETFL, O_NONBLOCK);
++
++  if (setsockopt(socketFd, IPPROTO_TCP,
++                 TCP_NODELAY, &opt,
++                 sizeof(opt))) {
++    fprintf(stderr, "Failed to set server socket options: %s\r\n", strerror(errno));
++  }
++
++  return SL_STATUS_OK;
+ }
+ 
+ static void writeFlush(void)
+@@ -73,11 +122,10 @@
+   int16_t count;
+ 
+   if (outBufWr - outBufRd) {
+-    count = write(serialFd, outBufRd, outBufWr - outBufRd);
++    count = write(socketFd, outBufRd, outBufWr - outBufRd);
+     if (count > 0) {
+       outBufRd += count;
+     }
+-    fsync(serialFd);
+     if (outBufRd == outBufWr) {
+       outBufRd = outBufWr = outBuffer;
+     }
+@@ -86,13 +134,23 @@
+ 
+ static sl_status_t readAvailable(uint16_t *count)
+ {
+-  int16_t bytesRead;
++  int bytesRead;
++
+   if (inBufRd == inBufWr) {
+     inBufRd = inBufWr = inBuffer;
+-    bytesRead = read(serialFd, inBuffer, inBlockLen);
++    bytesRead = read(socketFd, inBuffer, inBlockLen);
+     if (bytesRead > 0) {
+       inBufWr += bytesRead;
+     }
++    if (bytesRead == 0) {
++      fprintf(stderr, "Socket connection has been closed, restarting...\r\n");
++      close(socketFd);
++      socketFd = -1;
++
++      // ZHA cannot handle short interruptions of the port, so reopen the
++      // port asap
++      initSocket();
++    }
+   }
+   *count = inBufWr - inBufRd;
+   if (inBufRd == inBufWr) {
+@@ -113,7 +171,8 @@
+ #ifdef IO_LOG
+   logFile = fopen(IO_LOG, "w");
+ #endif
+-  struct termios tios;
++  const char *env;
++
+   outBufRd = outBuffer;
+   outBufWr = outBuffer;
+   outBlockLen = DEFAULT_OUT_BLOCK_LEN;
+@@ -127,38 +186,28 @@
+     inBlockLen = MAX_IN_BLOCK_LEN;
+   }
+ 
+-  // Make sure any previous file descriptor is nicely closed.
+-  // This should only be necessary during a failure recovery when the
+-  // host encountered an error.
+-  serialClose();
+-
+-  serialFd = open(serialPort,
+-                  O_RDWR | O_NOCTTY | O_NONBLOCK);
+-
+-  if (serialFd == NULL_FILE_DESCRIPTOR) {
+-    fprintf(stderr, "Failed to open %s: %s\r\n", serialPort, strerror(errno));
+-    fprintf(stderr, "Use socat to create PTYs for zigbeed and the host app. Eg:\r\n");
+-    fprintf(stderr, "socat -x -v pty,link=/dev/ttyZigbeeNCP pty,link=/tmp/ttyZigbeeNCP\r\n");
+-    serialClose();
+-    return SL_STATUS_FAIL;
++  // Get file descriptor from previous instance, if valid.
++  env = getenv("ZIGBEED_SOCKET_FD");
++  if (env && (socketFd = strtol(env, NULL, 10)) > 0) {
++    fprintf(stderr, "Reusing socket from previous instance.\r\n");
++    return SL_STATUS_OK;
+   }
+ 
+-  tcflush(serialFd, TCIOFLUSH);       // flush all input and output data
+-  fcntl(serialFd, F_SETFL, O_NDELAY);
+-  tcgetattr(serialFd, &tios);         // get current serial port options
+-
+-  tios.c_iflag &= ~(BRKINT | INLCR | IGNCR | ICRNL | INPCK
+-                    | ISTRIP | IMAXBEL | IXON | IXOFF | IXANY);
+-
+-  tios.c_lflag &= ~(ICANON | ECHO | IEXTEN | ISIG);  // raw input
+-
+-  tios.c_oflag &= ~OPOST;               // raw output
+-
+-  (void) memset(tios.c_cc, _POSIX_VDISABLE, NCCS);  // disable all control chars
++  return initSocket();
++}
+ 
+-  tcsetattr(serialFd, TCSAFLUSH, &tios);  // set EZSP serial port options
++void serialShutdown(void)
++{
++  char buf[16];
+ 
+-  return SL_STATUS_OK;
++  // If we have a valid socket, leave it open and pass fd number to
++  // the new instance.
++  if (socketFd > 0) {
++    snprintf(buf, sizeof(buf), "%d", socketFd);
++    setenv("ZIGBEED_SOCKET_FD", buf, true);
++  } else {
++    unsetenv("ZIGBEED_SOCKET_FD");
++  }
+ }
+ 
+ sl_status_t sli_legacy_serial_write_byte(uint8_t port, uint8_t dataByte)
+@@ -211,36 +260,18 @@
+   FD_ZERO(&mainloop.mWriteFdSet);
+   FD_ZERO(&mainloop.mErrorFdSet);
+ 
+-#ifdef ZIGBEE_PRO_COMPLIANCE_ON_HOST
+-  // pro-compliance on host has CLI interface
+-  // need to set pipeReadFd into the mainloop file descriptor.
+-  int pipeReadFd = sli_cli_get_pipe_read_fd();
+-  FD_SET(pipeReadFd, &mainloop.mReadFdSet);
+-  FD_SET(pipeReadFd, &mainloop.mErrorFdSet);
+-  serialFd = (serialFd > pipeReadFd ? serialFd : pipeReadFd);
+-#endif // ZIGBEE_PRO_COMPLIANCE_ON_HOST
+-
+   // Update mainloop initial FD and its timeout value
+-  mainloop.mMaxFd           = serialFd;
++  mainloop.mMaxFd           = socketFd;
+   mainloop.mTimeout.tv_sec  = timeoutMs / 1000;
+   mainloop.mTimeout.tv_usec = (timeoutMs - mainloop.mTimeout.tv_sec * 1000) * 1000;
+ 
+   // Update mainloop FDs to monitor
+-  FD_SET(serialFd, &mainloop.mReadFdSet);
+-  FD_SET(serialFd, &mainloop.mErrorFdSet);
++  FD_SET(socketFd, &mainloop.mReadFdSet);
++  FD_SET(socketFd, &mainloop.mErrorFdSet);
+   otSysMainloopUpdate(NULL, &mainloop);
+ 
+   if (otSysMainloopPoll(&mainloop) >= 0) {
+     otSysMainloopProcess(NULL, &mainloop);
+-#ifdef ZIGBEE_PRO_COMPLIANCE_ON_HOST
+-    // If the command is handled by the CLI component, read the data
+-    // to empty the pipe so that it is ready for the next command.
+-    if (sli_cli_is_input_handled()) {
+-      char buff[SL_CLI_THREADED_HOST_PIPE_DATA_LENGTH];
+-      assert(SL_CLI_THREADED_HOST_PIPE_DATA_LENGTH
+-             == read(sli_cli_get_pipe_read_fd(), buff, SL_CLI_THREADED_HOST_PIPE_DATA_LENGTH));
+-    }
+-#endif // ZIGBEE_PRO_COMPLIANCE_ON_HOST
+   } else if (errno != EINTR) {
+     //printf("%d\n", errno);
+     assert(false);
