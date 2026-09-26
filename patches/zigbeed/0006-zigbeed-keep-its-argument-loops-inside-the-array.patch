@@ -1,0 +1,20 @@
+--- a/app.c	2026-09-26 06:15:59.504462101 -0700
++++ b/app.c	2026-09-26 06:15:59.524334944 -0700
+@@ -324,7 +324,7 @@
+ 
+   int confArgc = 30;
+   char *confArgv[confArgc + 1];
+-  for (int i = confArgc + 1; i; i--) {
++  for (int i = confArgc; i; i--) {
+     confArgv[i] = NULL;
+   }
+   confArgv[0] = argv[0];
+@@ -336,7 +336,7 @@
+     fprintf(stderr, "Cannot allocate memory for arguments. \n");
+   }
+   ParseArg(confArgc + 1, confArgv, &config);
+-  for (int i = confArgc + 1; i; i--) {
++  for (int i = confArgc; i; i--) {
+     free(confArgv[i]);
+   }
+ 
