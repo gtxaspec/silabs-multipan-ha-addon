@@ -1,0 +1,24 @@
+--- a/simplicity_sdk_2025.6.1/protocol/zigbee/stack/platform/sl_zigbee_token_host.c	2026-09-25 23:55:02.535556392 -0700
++++ b/simplicity_sdk_2025.6.1/protocol/zigbee/stack/platform/sl_zigbee_token_host.c	2026-09-25 23:55:02.557032966 -0700
+@@ -256,8 +256,8 @@
+ 
+   for (uint32_t i = 0; i < sli_zigbee_token_count; i++) {
+     indexed_token_start_id = tokenNvm3Keys[i];
+-    // An indexed token (which has tokenArraySize[i] > 1) consumes tokenArraySize[i]*tokenSize[i] NVM3 key IDs
+-    indexed_token_end_id = indexed_token_start_id + ((tokenArraySize[i] - 1) * tokenSize[i]);
++    // An indexed token (which has tokenArraySize[i] > 1) consumes tokenArraySize[i] NVM3 key IDs
++    indexed_token_end_id = indexed_token_start_id + (tokenArraySize[i] - 1);
+     if ((nvm3_key >= indexed_token_start_id) && (nvm3_key <= indexed_token_end_id)) {
+       *token_index = i;
+       return SL_STATUS_OK;
+@@ -671,8 +671,8 @@
+   for (i = 0; i < sli_zigbee_token_count; i++) {
+     offset += PER_TOKEN_OVERHEAD;
+     indexed_token_start_id = tokenNvm3Keys[i];
+-    // An indexed token (which has tokenArraySize[i] > 1) consumes tokenArraySize[i]*tokenSize[i] NVM3 key IDs
+-    indexed_token_end_id = indexed_token_start_id + ((tokenArraySize[i] - 1) * tokenSize[i]);
++    // An indexed token (which has tokenArraySize[i] > 1) consumes tokenArraySize[i] NVM3 key IDs
++    indexed_token_end_id = indexed_token_start_id + (tokenArraySize[i] - 1);
+     if ((token >= indexed_token_start_id) && (token <= indexed_token_end_id)) {
+       break;
+     } else {
