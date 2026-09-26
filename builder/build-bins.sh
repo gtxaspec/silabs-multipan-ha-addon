@@ -1,6 +1,7 @@
 #!/bin/bash
 # Build the add-on's host binaries into /out/opt/multipan (run inside multipan-builder:bookworm).
-#   /patches: this repo's patches/ (zigbeed/ on the generated project, cpc-interface/ on both OpenThread CPC interfaces)
+#   /patches: this repo's patches/ (zigbeed/ on the generated project, cpc-interface/ on both OpenThread CPC interfaces,
+#             otbr/ on OTBR's Silicon Labs platform files)
 #   /src: cpc-daemon, zigbeed (slc-generated SiSDK project), sdk-hci (patched bridge), otbr/{ot-br-posix,openthread,silabs-vendor-interface}
 set -euo pipefail
 P=/opt/multipan; O=/out$P; B=/build
@@ -43,6 +44,7 @@ if [[ $step == all || $step == otbr ]]; then
          ../openthread/src/posix/platform/openthread-core-silabs-posix-config.h
   V=$B/otbr/silabs-vendor-interface
   for p in /patches/cpc-interface/*.patch; do patch -p1 -s -d $V < "$p"; done
+  for p in /patches/otbr/*.patch; do patch -p1 -s -d $V < "$p"; done
   cmake -S . -B $B/otbr-out -G Ninja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_INSTALL_RPATH=$P/lib -DCMAKE_MODULE_PATH=$V \
     -DOTBR_FEATURE_FLAGS=OFF -DOTBR_TELEMETRY_DATA_API=OFF -DOTBR_DNSSD_DISCOVERY_PROXY=ON -DOTBR_SRP_ADVERTISING_PROXY=ON \

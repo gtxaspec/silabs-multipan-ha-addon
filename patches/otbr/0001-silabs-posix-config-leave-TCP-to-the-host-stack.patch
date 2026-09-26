@@ -1,0 +1,22 @@
+--- a/openthread-core-silabs-posix-config.h	2026-09-25 20:36:48.289866748 -0700
++++ b/openthread-core-silabs-posix-config.h	2026-09-25 20:36:48.312576299 -0700
+@@ -266,7 +266,9 @@
+  *
+  */
+ #undef OPENTHREAD_CONFIG_TCP_ENABLE
+-#define OPENTHREAD_CONFIG_TCP_ENABLE (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_3)
++// Off on a border router: with OpenThread's own TCP built in, Ip6::PassToHost() never hands
++// received TCP to the host, so host connections to Thread devices never see their SYN-ACK.
++#define OPENTHREAD_CONFIG_TCP_ENABLE 0
+ 
+ /**
+  * OPENTHREAD_CONFIG_DNS_CLIENT_OVER_TCP_ENABLE
+@@ -275,7 +277,7 @@
+  *
+  */
+ #undef OPENTHREAD_CONFIG_DNS_CLIENT_OVER_TCP_ENABLE
+-#define OPENTHREAD_CONFIG_DNS_CLIENT_OVER_TCP_ENABLE (OPENTHREAD_CONFIG_THREAD_VERSION >= OT_THREAD_VERSION_1_3)
++#define OPENTHREAD_CONFIG_DNS_CLIENT_OVER_TCP_ENABLE 0
+ 
+ /**
+  * @def OPENTHREAD_CONFIG_NET_DIAG_VENDOR_INFO_SET_API_ENABLE
