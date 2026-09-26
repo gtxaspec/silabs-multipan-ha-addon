@@ -17,7 +17,8 @@ if bashio::config.false 'zigbee_enable'; then
 fi
 
 if bashio::config.false 'otbr_enable'; then
-    rm -f "${rc}/user/contents.d/otbr-agent" "${rc}/user/contents.d/otbr-agent-rest-discovery"
+    rm -f "${rc}/user/contents.d/otbr-agent" "${rc}/user/contents.d/otbr-agent-rest-discovery" \
+        "${rc}/user/contents.d/otbr-web"
     bashio::log.info "otbr-agent is disabled."
 fi
 

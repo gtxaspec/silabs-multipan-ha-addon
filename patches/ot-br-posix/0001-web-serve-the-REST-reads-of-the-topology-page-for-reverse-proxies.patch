@@ -1,0 +1,86 @@
+diff -ruN a/src/web/web-service/frontend/res/js/app.js b/src/web/web-service/frontend/res/js/app.js
+--- a/src/web/web-service/frontend/res/js/app.js	2026-09-25 20:54:34.158234337 -0700
++++ b/src/web/web-service/frontend/res/js/app.js	2026-09-25 20:54:34.182381724 -0700
+@@ -468,7 +468,7 @@
+ 
+         $scope.dataInit = function() {
+ 
+-            $http.get('http://' + $scope.ipAddr + '/node').then(function(response) {
++            $http.get('node').then(function(response) {
+ 
+                 $scope.basicInfo = response.data;
+                 console.log(response.data);
+@@ -505,7 +505,7 @@
+                 'nodes': [],
+                 'links': []
+             };
+-            $http.get('http://' + $scope.ipAddr + '/diagnostics').then(function(response) {
++            $http.get('diagnostics').then(function(response) {
+ 
+                 
+                 $scope.networksDiagInfo = response.data;
+diff -ruN a/src/web/web-service/web_server.cpp b/src/web/web-service/web_server.cpp
+--- a/src/web/web-service/web_server.cpp	2026-09-25 20:54:34.156827191 -0700
++++ b/src/web/web-service/web_server.cpp	2026-09-25 20:54:34.182090997 -0700
+@@ -35,6 +35,8 @@
+ 
+ #include "web/web-service/web_server.hpp"
+ 
++#include <cstdlib>
++
+ #include "common/code_utils.hpp"
+ #include "common/logging.hpp"
+ 
+@@ -94,6 +96,7 @@
+     ResponseGetStatus();
+     ResponseGetAvailableNetwork();
+     ResponseCommission();
++    ResponseRestProxy();
+     mServer.set_mount_point("/", WEB_FILE_PATH);
+ 
+     mServer.listen(aListenAddr, aPort);
+@@ -231,6 +234,33 @@
+     });
+ }
+ 
++void WebServer::ResponseRestProxy(void)
++{
++    // The topology page reads otbr-agent's REST API, whose port a browser behind a reverse
++    // proxy (e.g. Home Assistant ingress) cannot reach: serve those reads from here.
++    for (const char *path : {"/node", "/diagnostics"})
++    {
++        mServer.Get(path, [path](const Request &aRequest, Response &aResponse) {
++            OTBR_UNUSED_VARIABLE(aRequest);
++            const char *host = getenv("OTBR_WEB_REST_HOST");
++            const char *port = getenv("OTBR_WEB_REST_PORT");
++
++            httplib::Client client(host != nullptr ? host : "127.0.0.1", port != nullptr ? atoi(port) : 8081);
++            client.set_read_timeout(30, 0);
++
++            if (auto result = client.Get(path))
++            {
++                aResponse.status = result->status;
++                aResponse.set_content(result->body, OT_RESPONSE_HEADER_TYPE);
++            }
++            else
++            {
++                aResponse.status = 502;
++            }
++        });
++    }
++}
++
+ std::string WebServer::HandleJoinNetworkRequest(const std::string &aJoinRequest)
+ {
+     return mWpanService.HandleJoinNetworkRequest(aJoinRequest);
+diff -ruN a/src/web/web-service/web_server.hpp b/src/web/web-service/web_server.hpp
+--- a/src/web/web-service/web_server.hpp	2026-09-25 20:54:34.157112208 -0700
++++ b/src/web/web-service/web_server.hpp	2026-09-25 20:54:34.182229958 -0700
+@@ -107,6 +107,7 @@
+     void ResponseGetAvailableNetwork(void);
+     void DefaultHttpResponse(void);
+     void ResponseCommission(void);
++    void ResponseRestProxy(void);
+ 
+     void Init(void);
+ 

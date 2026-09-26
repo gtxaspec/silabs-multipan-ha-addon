@@ -1,5 +1,5 @@
 ---
-version: 3.0.0
+version: 3.1.0
 slug: silabs_multipan
 name: Silicon Labs Multiprotocol + Bluetooth
 description: Zigbee, Thread and Bluetooth on one Silicon Labs multiprotocol RCP
@@ -10,6 +10,10 @@ init: false
 startup: services
 boot: auto
 hassio_api: true
+ingress: true
+ingress_port: 8080
+panel_icon: mdi:access-point-network
+panel_title: OpenThread
 host_dbus: true
 host_network: true
 host_uts: true

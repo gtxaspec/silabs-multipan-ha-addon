@@ -10,6 +10,7 @@ RUN \
        ipset \
        iptables \
        libavahi-client3 \
+       libjsoncpp25 \
        libstdc++6 \
        libsystemd0 \
        netcat-openbsd \

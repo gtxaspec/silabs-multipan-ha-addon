@@ -1,0 +1,18 @@
+#!/usr/bin/with-contenv bashio
+# vim: ft=bash
+# shellcheck shell=bash
+# ==============================================================================
+# Start the OpenThread web UI, served through Home Assistant ingress
+# ==============================================================================
+# otbr-agent's run script records its REST address and port; otbr-web proxies
+# the topology page's REST reads there
+mapfile -t rest < /tmp/otbr-agent-rest-api
+export OTBR_WEB_REST_HOST="${rest[0]}"
+export OTBR_WEB_REST_PORT="${rest[1]}"
+if [ "${OTBR_WEB_REST_HOST}" = "::" ]; then
+    export OTBR_WEB_REST_HOST="::1"
+fi
+
+bashio::log.info "Starting otbr-web..."
+exec /opt/multipan/sbin/otbr-web -I wpan0 -s \
+    -a "$(bashio::addon.ip_address)" -p "$(bashio::addon.ingress_port)"

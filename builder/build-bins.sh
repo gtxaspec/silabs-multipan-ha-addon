@@ -1,7 +1,7 @@
 #!/bin/bash
 # Build the add-on's host binaries into /out/opt/multipan (run inside multipan-builder:bookworm).
 #   /patches: this repo's patches/ (zigbeed/ on the generated project, cpc-interface/ on both OpenThread CPC interfaces,
-#             otbr/ on OTBR's Silicon Labs platform files)
+#             otbr/ on OTBR's Silicon Labs platform files, ot-br-posix/ on OTBR itself)
 #   /src: cpc-daemon, zigbeed (slc-generated SiSDK project), sdk-hci (patched bridge), otbr/{ot-br-posix,openthread,silabs-vendor-interface}
 set -euo pipefail
 P=/opt/multipan; O=/out$P; B=/build
@@ -38,6 +38,7 @@ fi
 
 if [[ $step == all || $step == otbr ]]; then
   rm -rf $B/otbr; cp -r /src/otbr $B/otbr; cd $B/otbr/ot-br-posix
+  for p in /patches/ot-br-posix/*.patch; do patch -p1 -s < "$p"; done
   rmdir third_party/openthread/repo 2>/dev/null || true
   ln -sfn ../../../openthread third_party/openthread/repo
   ln -sf ../../../../silabs-vendor-interface/openthread-core-silabs-posix-config.h \
@@ -48,7 +49,7 @@ if [[ $step == all || $step == otbr ]]; then
   cmake -S . -B $B/otbr-out -G Ninja -DBUILD_TESTING=OFF -DCMAKE_BUILD_TYPE=Release \
     -DCMAKE_INSTALL_PREFIX=$P -DCMAKE_INSTALL_RPATH=$P/lib -DCMAKE_MODULE_PATH=$V \
     -DOTBR_FEATURE_FLAGS=OFF -DOTBR_TELEMETRY_DATA_API=OFF -DOTBR_DNSSD_DISCOVERY_PROXY=ON -DOTBR_SRP_ADVERTISING_PROXY=ON \
-    -DOTBR_MDNS=avahi -DOTBR_DBUS=OFF -DOTBR_WEB=OFF -DOTBR_BORDER_ROUTING=ON -DOTBR_REST=ON \
+    -DOTBR_MDNS=avahi -DOTBR_DBUS=OFF -DOTBR_WEB=ON -DOTBR_BORDER_ROUTING=ON -DOTBR_REST=ON \
     -DOTBR_BACKBONE_ROUTER=ON -DOTBR_INFRA_IF_NAME=eth0 \
     -DOTBR_VENDOR_NAME="Home Assistant" -DOTBR_PRODUCT_NAME="W1700K Multiprotocol" \
     -DOT_MULTIPAN_RCP=ON -DOT_POSIX_RCP_HDLC_BUS=ON -DOT_POSIX_RCP_SPI_BUS=ON -DOT_POSIX_RCP_VENDOR_BUS=ON \
@@ -59,5 +60,5 @@ if [[ $step == all || $step == otbr ]]; then
     -DCMAKE_C_FLAGS="-I$V" -DCMAKE_CXX_FLAGS="-I$V" >/build/otbr-cmake.log 2>&1 || { tail -30 /build/otbr-cmake.log; exit 1; }
   cmake --build $B/otbr-out >/build/otbr-build.log 2>&1 || { grep -E "error|FAILED" /build/otbr-build.log | head -20; exit 1; }
   DESTDIR=/out cmake --install $B/otbr-out >/dev/null
-  echo "otbr: $(ls $O/sbin/otbr-agent $O/bin/ot-ctl 2>/dev/null)"
+  echo "otbr: $(ls $O/sbin/otbr-agent $O/sbin/ot-ctl $O/sbin/otbr-web 2>/dev/null | tr '\n' ' ')"
 fi
