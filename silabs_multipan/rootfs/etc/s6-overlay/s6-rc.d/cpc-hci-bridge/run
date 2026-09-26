@@ -13,9 +13,11 @@ if [ "${duty}" -lt 100 ]; then
     bashio::log.info "Capping the Bluetooth LE scan duty cycle at ${duty} %."
 fi
 
-# shellcheck disable=SC2015
-mkdir -p /run/cpc-hci && cd /run/cpc-hci || bashio::exit.nok "Could not create /run/cpc-hci"
-rm -f pts_hci
+mkdir -p /run/cpc-hci || bashio::exit.nok "Could not create /run/cpc-hci"
+rm -f /run/cpc-hci/pts_hci
 
 bashio::log.info "Starting cpc-hci-bridge..."
-exec s6-notifyoncheck -d -s 300 -w 300 -n 0 /opt/multipan/bin/cpc-hci-bridge cpcd_0
+# The bridge creates pts_hci in its working directory; s6-notifyoncheck itself
+# must stay in the service directory (./notification-fd, ./data/check)
+exec s6-notifyoncheck -d -s 300 -w 300 -n 0 \
+    /bin/sh -c 'cd /run/cpc-hci && exec /opt/multipan/bin/cpc-hci-bridge cpcd_0'
