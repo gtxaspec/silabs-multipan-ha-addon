@@ -25,6 +25,9 @@ ser2net.
     driver actually waits for it
   - `cpc-hci-bridge/`: cap the LE scan duty cycle; BlueZ scans at 100 %, which leaves the shared
     radio no time to receive 802.15.4
+  - `otbr/`: OpenThread's own TCP off in Silicon Labs' posix config; with it on, the border
+    router host cannot open a TCP connection to any Thread device
+  - `ot-br-posix/`: the OpenThread web UI's topology page, served through Home Assistant ingress
 - `builder/`: builds the binaries the add-on image copies in
 
 ## Building
