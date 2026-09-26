@@ -1,0 +1,78 @@
+--- a/simplicity_sdk_2025.6.1/protocol/zigbee/stack/platform/sl_zigbee_token_host.c	2026-09-25 23:55:02.557032966 -0700
++++ b/simplicity_sdk_2025.6.1/protocol/zigbee/stack/platform/sl_zigbee_token_host.c	2026-09-25 23:55:44.424982266 -0700
+@@ -55,6 +55,7 @@
+ // mmap(2) returns MAP_FAILED on failure, which is not necessarily defined the
+ // same as NULL.
+ static uint8_t *nvm = MAP_FAILED;
++static size_t nvm_len = 0;
+ static bool nvm_initialized = false;
+ #define isInitialized() (nvm_initialized)
+ 
+@@ -432,6 +433,23 @@
+   return false;
+ }
+ 
++// ftruncate(2) does not resize an existing mapping: writes past its old end fault (SIGSEGV), or
++// land on a page the file no longer backs (SIGBUS), so every resize maps the file again.
++static void resizeNvmFile(size_t size)
++{
++  if (ftruncate(fd, size) == -1) {
++    err(EX_IOERR, "Could not set size of " SL_ZIGBEE_AF_TOKEN_FILENAME);
++  }
++  if (nvm != MAP_FAILED) {
++    munmap(nvm, nvm_len);
++  }
++  nvm = mmap(NULL, size, (PROT_READ | PROT_WRITE), MAP_SHARED, fd, 0);
++  if (nvm == MAP_FAILED) {
++    err(EX_UNAVAILABLE, "Could not map " SL_ZIGBEE_AF_TOKEN_FILENAME " to memory");
++  }
++  nvm_len = size;
++}
++
+ static void initializeTokenSystem(void)
+ {
+   assert(!isInitialized());
+@@ -474,8 +492,9 @@
+     nvmCreatorOffset[t].present = false;
+   }
+ 
++  nvm_len = (buf.st_size == 0 ? TOTAL_SIZE : (size_t) buf.st_size);
+   nvm = mmap(NULL,                     // let system choose address
+-             (buf.st_size == 0 ? TOTAL_SIZE : (size_t) buf.st_size),
++             nvm_len,
+              (PROT_READ | PROT_WRITE), // data can be read/written
+              MAP_SHARED,               // writes change the file
+              fd,
+@@ -556,9 +575,7 @@
+ 
+     // Now that we have all the tokens we are about, resize the file to the total number of
+     // tokens that we care about
+-    if (ftruncate(fd, TOTAL_SIZE) == -1) {
+-      err(EX_IOERR, "Could not set size of " SL_ZIGBEE_AF_TOKEN_FILENAME);
+-    }
++    resizeNvmFile(TOTAL_SIZE);
+ 
+     if (fstat(fd, &buf) == -1) {
+       err(EX_IOERR, "Could not determine size of " SL_ZIGBEE_AF_TOKEN_FILENAME);
+@@ -608,6 +625,10 @@
+   nvm_initialized = true;
+ 
+   if (reset) {
++    // A non-empty file with a different version is still mapped at its old size
++    if (nvm_len != TOTAL_SIZE) {
++      resizeNvmFile(TOTAL_SIZE);
++    }
+     resetTokenData();
+   }
+ }
+@@ -781,9 +802,7 @@
+   uint32_t nvm_offset_to_append = buf.st_size;
+ 
+   // sli_zigbee_token_count has already been bumped, so TOTAL_SIZE reflects the new total size
+-  if (ftruncate(fd, TOTAL_SIZE) == -1) {
+-    err(EX_IOERR, "Could not set size of " SL_ZIGBEE_AF_TOKEN_FILENAME);
+-  }
++  resizeNvmFile(TOTAL_SIZE);
+ 
+   DECLARE_INTERRUPT_STATE;
+   DISABLE_INTERRUPTS();
