@@ -16,8 +16,10 @@ ser2net.
 
 - `silabs_multipan/`: the add-on (options and usage in its `DOCS.md`)
 - `patches/`: changes to Silicon Labs sources
-  - `zigbeed/`: EZSP over a TCP socket (upstream's patch, ported), and an EZSP reset answered in
-    about 1 s instead of 5 (bellows gives up after 2.5 s)
+  - `zigbeed/`: EZSP over a TCP socket (upstream's patch, ported), an EZSP reset answered in
+    about 1 s instead of 5 (bellows gives up after 2.5 s), and two fixes to the host token file:
+    indexed tokens written at the wrong offset (Silicon Labs' fix from SiSDK 2025.6.3), and the
+    file grown without being mapped again, which crashed zigbeed on its next start
   - `cpc-interface/`: OpenThread's CPC radio interface, used by zigbeed and otbr-agent: retry the
     endpoint open while the RCP reopens it, and deliver the faked spinel reset response when the
     driver actually waits for it
