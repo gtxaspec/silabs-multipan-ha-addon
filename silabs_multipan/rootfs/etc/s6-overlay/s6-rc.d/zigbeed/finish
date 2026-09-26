@@ -1,2 +1,22 @@
-#!/bin/sh
-exec /etc/s6-overlay/scripts/halt-on-failure zigbeed "$1" "$2"
+#!/usr/bin/with-contenv bashio
+# shellcheck shell=bash
+# ==============================================================================
+# zigbeed reopens its CPC endpoint whenever it starts (it re-executes itself on
+# every EZSP reset), so after a crash s6 simply starts it again. A failing exit,
+# or more than 3 crashes in 5 minutes, still takes the whole add-on down.
+# ==============================================================================
+readonly code="$1"
+readonly signal="$2"
+readonly crashes=/run/zigbeed-crashes
+
+if [ "${code}" -eq 256 ] && [ "${signal}" -ne 15 ]; then
+    now="$(date +%s)"
+    echo "${now}" >> "${crashes}"
+    recent="$(awk -v since=$((now - 300)) '$1 >= since' "${crashes}" | wc -l)"
+    if [ "${recent}" -le 3 ]; then
+        bashio::log.warning "zigbeed crashed (signal ${signal}), restarting it (${recent} in 5 minutes)."
+        exit 0
+    fi
+fi
+
+exec /etc/s6-overlay/scripts/halt-on-failure zigbeed "${code}" "${signal}"
