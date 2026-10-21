@@ -23,6 +23,8 @@ SDK 2025.6.1 and cpcd 4.9.1.
 - `bluetooth_max_scan_duty`: caps the LE scan window at this percentage of the scan
   interval (100 = no cap). BlueZ scans at 100 %, which leaves the shared radio no
   time to receive 802.15.4.
+- `otbr_tx_power`: Thread transmit power in dBm, applied every time otbr-agent starts.
+  Unset keeps the RCP's default (8 dBm on the EFR32MG21A010, whose maximum is 10).
 - `otbr_log_level`, `otbr_firewall`, `cpcd_trace`.
 
 ## Using it
