@@ -117,7 +117,7 @@ if bashio::config.has_value 'otbr_tx_power'; then
         for _ in $(seq 120); do
             if [ -S /run/openthread-wpan0.sock ] \
                 && /opt/multipan/sbin/ot-ctl txpower "${otbr_tx_power}" > /dev/null 2>&1; then
-                actual="$(/opt/multipan/sbin/ot-ctl txpower 2> /dev/null | head -n 1)"
+                actual="$(/opt/multipan/sbin/ot-ctl txpower 2> /dev/null | head -n 1 | tr -d '\r')"
                 if [ "${actual}" = "${otbr_tx_power} dBm" ]; then
                     bashio::log.info "Thread TX power set to ${actual}."
                 else
